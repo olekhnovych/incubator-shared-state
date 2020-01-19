@@ -1,7 +1,9 @@
-package com.synerise.ai.sharedstate
+package com.synerise.ai.sharedstate.examples.requiredenabled
 
 import akka.actor.typed.scaladsl.{Behaviors, LoggerOps}
 import akka.actor.typed.{ActorRef, ActorSystem, Behavior}
+
+import com.synerise.ai.sharedstate._
 import com.synerise.ai.sharedstate.condition._
 
 
