@@ -27,19 +27,11 @@ object Service {
 
 class Service(val storage: Storage.Ref, serviceName: String, watchedServiceNames: List[String]) {
   def apply(): Behavior[Service.Message] = Behaviors.setup { context =>
-
     val sharedStatesWrapper: ActorRef[SharedStates] =
       context.messageAdapter(sharedStates => Service.SharedStatesResponce(sharedStates))
 
-
-    val a = And(FieldEquals("type", "serviceStatus"),
-                Or(watchedServiceNames.map(watchedServiceName => FieldEquals("serviceName", watchedServiceName)): _*))
-    context.log.info(s"condition: $a")
-
-
     storage ! Storage.Subscribe(And(FieldEquals("type", "serviceStatus"),
-                                    Or(watchedServiceNames.map(watchedServiceName => FieldEquals("serviceName", watchedServiceName)): _*)),
-                                sharedStatesWrapper)
+                                    Or(watchedServiceNames.map(watchedServiceName => FieldEquals("owner", watchedServiceName)): _*)), sharedStatesWrapper)
 
     lazy val exposeStatus: (String, String) => Unit = (status, watchedStatuses) =>
       storage ! Storage.Update(SharedStateFactory.serviceStatus(serviceName, f"${status} (${watchedStatuses})"))
@@ -47,13 +39,13 @@ class Service(val storage: Storage.Ref, serviceName: String, watchedServiceNames
     lazy val loop: (String, String) => Behavior[Service.Message] =
       (status, watchedStatuses) => Behaviors.receiveMessage {
         case Service.SharedStatesResponce(sharedStates) => {
-          val watchedStatuses = sharedStates.map(x => s"${x.fields("serviceName")}: ${x.fields("status")}").mkString(", ")
+          val watchedStatuses = sharedStates.map(x => s"${x.fields("owner")}: ${x.fields("status")}").mkString(", ")
 
           exposeStatus(status, watchedStatuses)
           loop(status, watchedStatuses)
         }
         case Service.Print() => {
-          context.log.info(s"status: $status, watchedStatuses: $watchedStatuses")
+          context.log.info(s"status: $status")
           Behaviors.same
         }
         case Service.UpdateStatus(newStatus) => {
@@ -90,17 +82,6 @@ object Run extends App {
 
   print()
 
-  // storage ! Storage.Update(SharedStateFactory.requiredEnabledService("main", "serviceA", true))
-  // print()
-
-  // storage ! Storage.Update(SharedStateFactory.requiredEnabledService("main", "serviceB", true))
-  // print()
-
-  // storage ! Storage.Update(SharedStateFactory.requiredEnabledService("main", "serviceA", false))
-  // print()
-
-  // storage ! Storage.Update(SharedStateFactory.requiredEnabledService("main", "serviceB", false))
-  // print()
-
-
+  serviceC ! Service.UpdateStatus("READY")
+  print()
 }
