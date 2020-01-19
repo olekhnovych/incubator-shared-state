@@ -12,20 +12,6 @@ import scala.concurrent.duration._
 import scala.concurrent.{Future, Await}
 
 
-case class TrueCondition() extends Condition {
-  def apply(sharedState: SharedState): Boolean = true
-}
-
-case class AndCondition(conditions: Condition*) extends Condition {
-  def apply(sharedState: SharedState): Boolean =
-    conditions.map(_(sharedState)).foldLeft(true)(_ && _)
-}
-
-case class FieldEqualsCondition(fieldName: String, value: String) extends Condition {
-  def apply(sharedState: SharedState): Boolean =
-    sharedState.fields.get(fieldName).map(_ == value).getOrElse(false)
-}
-
 case class StorageImpl(sharedStates: Map[SharedStateKey, SharedState]) {
   def update(sharedState: SharedState) =
     StorageImpl(sharedStates + sharedState.entry)
@@ -83,7 +69,7 @@ object Storage {
       }
 
       case Print() => {
-        val sharedStates = storage.fetch(TrueCondition())
+        val sharedStates = storage.fetch(condition.True())
         for (sharedState <- sharedStates)
           context.log.info(s"$sharedState")
         Behaviors.same
@@ -116,9 +102,9 @@ class Service(val storage: Storage.Ref, serviceName: String, requiredServiceName
     val sharedStatesWrapper: ActorRef[SharedStates] =
       context.messageAdapter(sharedStates => Service.SharedStatesResponce(sharedStates))
 
-    storage ! Storage.Subscribe(AndCondition(FieldEqualsCondition("type", "requiredEnabled"),
-                                             FieldEqualsCondition("serviceName", serviceName),
-                                             FieldEqualsCondition("requiredEnabled", "true")), sharedStatesWrapper)
+    storage ! Storage.Subscribe(condition.And(condition.FieldEquals("type", "requiredEnabled"),
+                                              condition.FieldEquals("serviceName", serviceName),
+                                              condition.FieldEquals("requiredEnabled", "true")), sharedStatesWrapper)
 
     lazy val loop: Boolean => Behavior[Service.Message] = enabled => Behaviors.receiveMessage {
       case Service.SharedStatesResponce(sharedStates) => {
