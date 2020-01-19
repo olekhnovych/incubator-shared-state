@@ -1,0 +1,15 @@
+<configuration debug="false">
+    <shutdownHook/>
+
+    <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <charset>UTF-8</charset>
+            <pattern>%date{ISO8601} [%X{sourceThread}:%logger{10}:%line] [%level] [%X{akkaSource}] - %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <root level="DEBUG">
+        <appender-ref ref="STDOUT"/>
+    </root>
+
+</configuration>
