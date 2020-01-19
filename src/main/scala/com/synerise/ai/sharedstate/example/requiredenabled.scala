@@ -11,8 +11,8 @@ object SharedStateFactory {
   def requiredEnabledService(owner: String, requiredServiceName: String, enabled: Boolean=true) =
     SharedState(Map("type"->"requiredEnabled",
                     "owner"->owner,
-                    "serviceName" -> requiredServiceName,
-                    "requiredEnabled" -> enabled.toString),
+                    "serviceName"->requiredServiceName,
+                    "requiredEnabled"->enabled.toString),
                 Set("owner", "serviceName", "type"))
 }
 
