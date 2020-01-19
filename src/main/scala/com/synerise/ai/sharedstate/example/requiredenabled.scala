@@ -7,6 +7,16 @@ import com.synerise.ai.sharedstate._
 import com.synerise.ai.sharedstate.condition._
 
 
+object SharedStateFactory {
+  def requiredEnabledService(owner: String, requiredServiceName: String, enabled: Boolean=true) =
+    SharedState(Map("type"->"requiredEnabled",
+                    "owner"->owner,
+                    "serviceName" -> requiredServiceName,
+                    "requiredEnabled" -> enabled.toString),
+                Set("owner", "serviceName", "type"))
+}
+
+
 object Service {
   trait Message
   case class SharedStatesResponce(sharedStates: SharedStates) extends Message
