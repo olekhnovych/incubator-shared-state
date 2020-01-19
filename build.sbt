@@ -44,5 +44,3 @@ javaOptions in Universal ++= Seq(
 
 name := "shared-state"
 organization := "com.synerise.ai"
-
-mainClass in Compile := Some("com.synerise.ai.sharedstate.Boot")

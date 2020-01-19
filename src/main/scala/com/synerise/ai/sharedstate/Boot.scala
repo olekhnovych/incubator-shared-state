@@ -1,91 +1,8 @@
 package com.synerise.ai.sharedstate
 
-import akka.actor.testkit.typed.scaladsl.LogCapturing
-import akka.actor.typed.scaladsl.Behaviors
-import akka.actor.typed.scaladsl.LoggerOps
+import akka.actor.typed.scaladsl.{Behaviors, LoggerOps}
 import akka.actor.typed.{ActorRef, ActorSystem, Behavior}
-import akka.actor.typed.receptionist.{Receptionist, ServiceKey}
-import akka.actor.typed.scaladsl.AskPattern._
-import scala.util.{Try, Success, Failure}
-import akka.util.Timeout
-import scala.concurrent.duration._
-import scala.concurrent.{Future, Await}
-
-
-case class StorageImpl(sharedStates: Map[SharedStateKey, SharedState]) {
-  def update(sharedState: SharedState) =
-    StorageImpl(sharedStates + sharedState.entry)
-
-  def fetch(condition: Condition) =
-    sharedStates.values.filter(condition).toList
-}
-
-object StorageImpl {
-  def apply() = new StorageImpl(Map.empty)
-}
-
-object Storage {
-  trait Message
-  case class Update(sharedState: SharedState) extends Message
-  case class Fetch(condition: Condition, replyTo: ActorRef[SharedStates]) extends Message
-  case class Subscribe(condition: Condition, subscriber: ActorRef[SharedStates]) extends Message
-  case class Print() extends Message
-
-  type Ref = ActorRef[Message]
-
-  type Subscriber = ActorRef[SharedStates]
-  type Subscriptions = Map[Subscriber, Condition]
-
-  def apply(): Behavior[Message] =
-    next(StorageImpl(), Map.empty)
-
-  def next(storage: StorageImpl, subscriptions: Subscriptions): Behavior[Message] = Behaviors.setup { context =>
-    Behaviors.receiveMessage {
-      case Update(sharedState) => {
-        val (subscribers, conditions) = subscriptions.unzip
-
-        val fetchesBefore = conditions.map(storage.fetch).toList
-        val newStorage = storage.update(sharedState)
-        val fetchesAfter = conditions.map(newStorage.fetch).toList
-
-        val changedSubscriptions = (subscribers, fetchesBefore, fetchesAfter).zipped
-          .collect{case (subscriber, fetchBefore, fetchAfter) if fetchBefore != fetchAfter => (subscriber, fetchAfter) }
-
-        for((subscriber, sharedStates) <- changedSubscriptions)
-          subscriber ! sharedStates
-
-        next(newStorage, subscriptions)
-      }
-
-      case Fetch(condition, replyTo) => {
-        replyTo ! storage.fetch(condition)
-        next(storage, subscriptions)
-      }
-
-      case Subscribe(condition, subscriber) => {
-        val newSubscriptions = subscriptions + (subscriber -> condition)
-        subscriber ! storage.fetch(condition)
-        next(storage, newSubscriptions)
-      }
-
-      case Print() => {
-        val sharedStates = storage.fetch(condition.True())
-        for (sharedState <- sharedStates)
-          context.log.info(s"$sharedState")
-        Behaviors.same
-      }
-    }
-  }
-}
-
-object SharedStateFactory {
-  def requiredEnabledService(owner: String, requiredServiceName: String, enabled: Boolean=true) =
-    SharedState(Map("type"->"requiredEnabled",
-                    "owner"->owner,
-                    "serviceName" -> requiredServiceName,
-                    "requiredEnabled" -> enabled.toString),
-                Set("owner", "serviceName", "type"))
-}
+import com.synerise.ai.sharedstate.condition._
 
 
 object Service {
@@ -102,9 +19,9 @@ class Service(val storage: Storage.Ref, serviceName: String, requiredServiceName
     val sharedStatesWrapper: ActorRef[SharedStates] =
       context.messageAdapter(sharedStates => Service.SharedStatesResponce(sharedStates))
 
-    storage ! Storage.Subscribe(condition.And(condition.FieldEquals("type", "requiredEnabled"),
-                                              condition.FieldEquals("serviceName", serviceName),
-                                              condition.FieldEquals("requiredEnabled", "true")), sharedStatesWrapper)
+    storage ! Storage.Subscribe(And(FieldEquals("type", "requiredEnabled"),
+                                    FieldEquals("serviceName", serviceName),
+                                    FieldEquals("requiredEnabled", "true")), sharedStatesWrapper)
 
     lazy val loop: Boolean => Behavior[Service.Message] = enabled => Behaviors.receiveMessage {
       case Service.SharedStatesResponce(sharedStates) => {
@@ -127,40 +44,14 @@ class Service(val storage: Storage.Ref, serviceName: String, requiredServiceName
 }
 
 
-object Main {
-  trait Message
+object Run extends App {
+  implicit val system: ActorSystem[Spawner.Message] =
+    ActorSystem(Spawner(), "main")
 
-  case class Spawn[U](behavior: Behavior[U], name: String, replyTo: ActorRef[SpawnResponse[U]]) extends Message
-  case class SpawnResponse[U](actorRef: ActorRef[U])
-
-  def apply(): Behavior[Message] = Behaviors.setup(context =>
-    Behaviors.receiveMessage {
-      case Spawn(behavior, name, replyTo) => {
-        val actor = context.spawn(behavior, name)
-        replyTo ! SpawnResponse(actor)
-        Behaviors.same
-      }
-    }
-  )
-
-  def spawn[U](behavior: Behavior[U], name: String)(implicit actorSystem: ActorSystem[Main.Message]) = {
-    implicit val timeout: Timeout = 3.seconds
-    implicit val executionContext = actorSystem.executionContext
-
-    val responseFuture = actorSystem.ask((ref: ActorRef[Main.SpawnResponse[U]]) => Main.Spawn(behavior, name, ref))
-    Await.result(responseFuture, 3.seconds).actorRef
-  }
-}
-
-
-object Boot extends App {
-  implicit val system: ActorSystem[Main.Message] =
-    ActorSystem(Main(), "main")
-
-  val storage = Main.spawn(Storage(), "storage")
-  val serviceA = Main.spawn(Service(storage, "serviceA", List("serviceC")), "serviceA")
-  val serviceB = Main.spawn(Service(storage, "serviceB", List("serviceC")), "serviceB")
-  val serviceC = Main.spawn(Service(storage, "serviceC", List.empty),       "serviceC")
+  val storage = Spawner.spawn(Storage(), "storage")
+  val serviceA = Spawner.spawn(Service(storage, "serviceA", List("serviceC")), "serviceA")
+  val serviceB = Spawner.spawn(Service(storage, "serviceB", List("serviceC")), "serviceB")
+  val serviceC = Spawner.spawn(Service(storage, "serviceC", List.empty),       "serviceC")
 
   def print() = {
     Thread.sleep(20)
