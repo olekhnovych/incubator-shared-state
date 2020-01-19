@@ -12,11 +12,6 @@ import scala.concurrent.duration._
 import scala.concurrent.{Future, Await}
 
 
-case class SharedState(fields: Map[String, String], keyFields: Set[String]) {
-  def entry: Tuple2[SharedStateKey, SharedState] =
-    fields.filterKeys(keyFields) -> this
-}
-
 case class TrueCondition() extends Condition {
   def apply(sharedState: SharedState): Boolean = true
 }
