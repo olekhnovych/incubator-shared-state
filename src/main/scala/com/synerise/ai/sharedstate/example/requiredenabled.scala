@@ -19,7 +19,7 @@ object SharedStateFactory {
 
 object Service {
   trait Message
-  case class SharedStatesResponce(sharedStates: SharedStates) extends Message
+  case class SharedStatesResponse(sharedStates: SharedStates) extends Message
   case class Print() extends Message
 
   def apply(storage: Storage.Ref, serviceName: String, requiredServiceNames: List[String]) = new Service(storage, serviceName, requiredServiceNames)()
@@ -29,14 +29,14 @@ class Service(val storage: Storage.Ref, serviceName: String, requiredServiceName
   def apply(): Behavior[Service.Message] = Behaviors.setup { context =>
 
     val sharedStatesWrapper: ActorRef[SharedStates] =
-      context.messageAdapter(sharedStates => Service.SharedStatesResponce(sharedStates))
+      context.messageAdapter(sharedStates => Service.SharedStatesResponse(sharedStates))
 
     storage ! Storage.Subscribe(And(FieldEquals("type", "requiredEnabled"),
                                     FieldEquals("serviceName", serviceName),
                                     FieldEquals("requiredEnabled", "true")), sharedStatesWrapper)
 
     lazy val loop: Boolean => Behavior[Service.Message] = enabled => Behaviors.receiveMessage {
-      case Service.SharedStatesResponce(sharedStates) => {
+      case Service.SharedStatesResponse(sharedStates) => {
 
         val enabled = !sharedStates.isEmpty
 

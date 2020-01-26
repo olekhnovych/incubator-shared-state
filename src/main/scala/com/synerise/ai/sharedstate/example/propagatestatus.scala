@@ -18,7 +18,7 @@ object SharedStateFactory {
 
 object Service {
   trait Message
-  case class SharedStatesResponce(sharedStates: SharedStates) extends Message
+  case class SharedStatesResponse(sharedStates: SharedStates) extends Message
   case class Print() extends Message
   case class UpdateStatus(status: String) extends Message
 
@@ -28,7 +28,7 @@ object Service {
 class Service(val storage: Storage.Ref, serviceName: String, watchedServiceNames: List[String]) {
   def apply(): Behavior[Service.Message] = Behaviors.setup { context =>
     val sharedStatesWrapper: ActorRef[SharedStates] =
-      context.messageAdapter(sharedStates => Service.SharedStatesResponce(sharedStates))
+      context.messageAdapter(sharedStates => Service.SharedStatesResponse(sharedStates))
 
     storage ! Storage.Subscribe(And(FieldEquals("type", "serviceStatus"),
                                     Or(watchedServiceNames.map(watchedServiceName => FieldEquals("owner", watchedServiceName)): _*)), sharedStatesWrapper)
@@ -38,7 +38,7 @@ class Service(val storage: Storage.Ref, serviceName: String, watchedServiceNames
 
     lazy val loop: (String, String) => Behavior[Service.Message] =
       (status, watchedStatuses) => Behaviors.receiveMessage {
-        case Service.SharedStatesResponce(sharedStates) => {
+        case Service.SharedStatesResponse(sharedStates) => {
           val watchedStatuses = sharedStates.map(x => s"${x.fields("owner")}: ${x.fields("status")}").mkString(", ")
 
           exposeStatus(status, watchedStatuses)
