@@ -10,9 +10,12 @@ import com.synerise.ai.sharedstate.condition._
 object Storage {
   trait Message
   case class Update(sharedState: SharedState) extends Message
+  case class UpdateWithVersion(sharedState: SharedState, replyTo: ActorRef[UpdateResult]) extends Message
   case class Fetch(condition: Condition, replyTo: ActorRef[SharedStates]) extends Message
   case class Subscribe(condition: Condition, subscriber: ActorRef[SharedStates]) extends Message
   case class Print() extends Message
+
+  case class UpdateResult(accepted: Boolean)
 
   type Ref = ActorRef[Message]
 
@@ -22,37 +25,42 @@ object Storage {
   def apply(): Behavior[Message] =
     next(MemoryStorageBackend(), Map.empty)
 
-  def next(storage: StorageBackend, subscriptions: Subscriptions): Behavior[Message] = Behaviors.setup { context =>
+  def next(storageBackend: StorageBackend, subscriptions: Subscriptions): Behavior[Message] = Behaviors.setup { context =>
     Behaviors.receiveMessage {
       case Update(sharedState) => {
         val (subscribers, conditions) = subscriptions.unzip
 
-        val fetchesBefore = conditions.map(storage.fetch).toList
-        val newStorage = storage.update(sharedState, false).backend
-        val fetchesAfter = conditions.map(newStorage.fetch).toList
+        val sharedStatesBefore = conditions.map(storageBackend.fetch).toList
+        val updateResult = storageBackend.update(sharedState, false)             //TODO updateVersion
 
-        val changedSubscriptions = (subscribers, fetchesBefore, fetchesAfter).zipped
-          .collect{case (subscriber, fetchBefore, fetchAfter) if fetchBefore != fetchAfter => (subscriber, fetchAfter) }
+        if (updateResult.accepted) {
+          val sharedStatesAfter = conditions.map(updateResult.storageBackend.fetch).toList
 
-        for((subscriber, sharedStates) <- changedSubscriptions)
-          subscriber ! sharedStates
+          val changedSubscriptions = (subscribers, sharedStatesBefore, sharedStatesAfter).zipped
+            .collect{case (subscriber, sharedStateBefore, sharedStateAfter)
+                         if sharedStateBefore != sharedStateAfter => (subscriber, sharedStateAfter) }
 
-        next(newStorage, subscriptions)
+         for((subscriber, sharedStates) <- changedSubscriptions)
+            subscriber ! sharedStates
+        }
+
+        //TODO replyTo ! UpdateResult(updateResult.accepted)
+        next(updateResult.storageBackend, subscriptions)
       }
 
       case Fetch(condition, replyTo) => {
-        replyTo ! storage.fetch(condition)
-        next(storage, subscriptions)
+        replyTo ! storageBackend.fetch(condition)
+        next(storageBackend, subscriptions)
       }
 
       case Subscribe(condition, subscriber) => {
         val newSubscriptions = subscriptions + (subscriber -> condition)
-        subscriber ! storage.fetch(condition)
-        next(storage, newSubscriptions)
+        subscriber ! storageBackend.fetch(condition)
+        next(storageBackend, newSubscriptions)
       }
 
       case Print() => {
-        val sharedStates = storage.fetch(True())
+        val sharedStates = storageBackend.fetch(True())
         for (sharedState <- sharedStates)
           context.log.info(s"$sharedState")
         Behaviors.same
