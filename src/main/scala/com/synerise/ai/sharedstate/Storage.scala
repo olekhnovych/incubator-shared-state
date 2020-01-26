@@ -22,13 +22,13 @@ object Storage {
   def apply(): Behavior[Message] =
     next(MemoryStorageBackend(), Map.empty)
 
-  def next(storage: MemoryStorageBackend, subscriptions: Subscriptions): Behavior[Message] = Behaviors.setup { context =>
+  def next(storage: StorageBackend, subscriptions: Subscriptions): Behavior[Message] = Behaviors.setup { context =>
     Behaviors.receiveMessage {
       case Update(sharedState) => {
         val (subscribers, conditions) = subscriptions.unzip
 
         val fetchesBefore = conditions.map(storage.fetch).toList
-        val newStorage = storage.update(sharedState)
+        val newStorage = storage.update(sharedState, false).backend
         val fetchesAfter = conditions.map(newStorage.fetch).toList
 
         val changedSubscriptions = (subscribers, fetchesBefore, fetchesAfter).zipped

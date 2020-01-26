@@ -3,12 +3,26 @@ package com.synerise.ai.sharedstate.storagebackend
 import com.synerise.ai.sharedstate._
 
 
-case class MemoryStorageBackend(sharedStates: Map[SharedStateKey, SharedState]) extends StorageBackend {
-  def update(sharedState: SharedState) =
-    MemoryStorageBackend(sharedStates + sharedState.entry)
+case class MemoryStorageBackend(stack: Map[SharedStateKey, SharedState]) extends StorageBackend {
+  def update(sharedState: SharedState, updateVersion: Boolean) = {
+    val currentSharedState = stack.get(sharedState.key) match {
+      case Some(currentSharedState) if currentSharedState.version == sharedState.version =>
+        Some(if (updateVersion) currentSharedState.updateVersion else currentSharedState)
+
+      case None => Some(sharedState)
+      case _ => None
+    }
+
+    currentSharedState match {
+      case Some(currentSharedState) =>
+        UpdateResult(MemoryStorageBackend(stack + currentSharedState.entry), true)
+      case None =>
+        UpdateResult(MemoryStorageBackend(stack), false)
+    }
+  }
 
   def fetch(condition: Condition) =
-    sharedStates.values.filter(condition).toList
+    stack.values.filter(condition).toList
 }
 
 object MemoryStorageBackend {
