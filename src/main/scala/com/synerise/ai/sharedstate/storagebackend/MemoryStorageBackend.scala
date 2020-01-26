@@ -7,7 +7,7 @@ case class MemoryStorageBackend(stack: Map[SharedStateKey, SharedState]) extends
   def update(sharedState: SharedState, updateVersion: Boolean) = {
     val currentSharedState = stack.get(sharedState.key) match {
       case Some(currentSharedState) if currentSharedState.version == sharedState.version =>
-        Some(if (updateVersion) currentSharedState.updateVersion else currentSharedState)
+        Some(if (updateVersion) sharedState.updateVersion else sharedState)
 
       case None => Some(sharedState)
       case _ => None
