@@ -31,7 +31,7 @@ object Storage {
         val (subscribers, conditions) = subscriptions.unzip
 
         val sharedStatesBefore = conditions.map(storageBackend.fetch).toList
-        val updateResult = storageBackend.update(sharedState, false)             //TODO updateVersion
+        val updateResult = storageBackend.update(sharedState, false)
 
         if (updateResult.accepted) {
           val sharedStatesAfter = conditions.map(updateResult.storageBackend.fetch).toList
@@ -44,7 +44,28 @@ object Storage {
             subscriber ! sharedStates
         }
 
-        //TODO replyTo ! UpdateResult(updateResult.accepted)
+        next(updateResult.storageBackend, subscriptions)
+      }
+
+      case UpdateWithVersion(sharedState, replyTo) => {
+        val (subscribers, conditions) = subscriptions.unzip
+
+        val sharedStatesBefore = conditions.map(storageBackend.fetch).toList
+        val updateResult = storageBackend.update(sharedState, true)
+
+        replyTo ! UpdateResult(updateResult.accepted)
+
+        if (updateResult.accepted) {
+          val sharedStatesAfter = conditions.map(updateResult.storageBackend.fetch).toList
+
+          val changedSubscriptions = (subscribers, sharedStatesBefore, sharedStatesAfter).zipped
+            .collect{case (subscriber, sharedStateBefore, sharedStateAfter)
+                         if sharedStateBefore != sharedStateAfter => (subscriber, sharedStateAfter) }
+
+         for((subscriber, sharedStates) <- changedSubscriptions)
+            subscriber ! sharedStates
+        }
+
         next(updateResult.storageBackend, subscriptions)
       }
 
