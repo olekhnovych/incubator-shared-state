@@ -22,7 +22,8 @@ object Service {
   case class SharedStatesResponse(sharedStates: SharedStates) extends Message
   case class Print() extends Message
 
-  def apply(storage: Storage.Ref, serviceName: String, requiredServiceNames: List[String]) = new Service(storage, serviceName, requiredServiceNames)()
+  def apply(storage: Storage.Ref, serviceName: String, requiredServiceNames: List[String]) =
+    new Service(storage, serviceName, requiredServiceNames)()
 }
 
 class Service(val storage: Storage.Ref, serviceName: String, requiredServiceNames: List[String]) {

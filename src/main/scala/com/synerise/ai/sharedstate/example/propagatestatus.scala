@@ -22,7 +22,8 @@ object Service {
   case class Print() extends Message
   case class UpdateStatus(status: String) extends Message
 
-  def apply(storage: Storage.Ref, serviceName: String, watchedServiceNames: List[String]) = new Service(storage, serviceName, watchedServiceNames)()
+  def apply(storage: Storage.Ref, serviceName: String, watchedServiceNames: List[String]) =
+    new Service(storage, serviceName, watchedServiceNames)()
 }
 
 class Service(val storage: Storage.Ref, serviceName: String, watchedServiceNames: List[String]) {
@@ -31,7 +32,8 @@ class Service(val storage: Storage.Ref, serviceName: String, watchedServiceNames
       context.messageAdapter(sharedStates => Service.SharedStatesResponse(sharedStates))
 
     storage ! Storage.Subscribe(And(FieldEquals("type", "serviceStatus"),
-                                    Or(watchedServiceNames.map(watchedServiceName => FieldEquals("owner", watchedServiceName)): _*)), sharedStatesWrapper)
+                                    Or(watchedServiceNames.map(watchedServiceName =>
+                                         FieldEquals("owner", watchedServiceName)): _*)), sharedStatesWrapper)
 
     lazy val exposeStatus: (String, String) => Unit = (status, watchedStatuses) =>
       storage ! Storage.Update(SharedStateFactory.serviceStatus(serviceName, f"${status} (${watchedStatuses})"))
