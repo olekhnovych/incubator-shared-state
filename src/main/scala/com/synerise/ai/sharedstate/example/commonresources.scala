@@ -12,6 +12,15 @@ import com.synerise.ai.sharedstate._
 import com.synerise.ai.sharedstate.condition._
 
 
+object SharedStateFactory {
+  def resource(resourceName: String, state: String="toProcess", version: Long=0) =
+     SharedState(Map("type"->"resource",
+                     "resource"->resourceName,
+                     "state"->state),
+                 Set("type", "resource"), version)
+}
+
+
 object Service {
   trait Message
   case class Print() extends Message
@@ -43,26 +52,17 @@ class Service(context: ActorContext[Service.Message], timers: TimerScheduler[Ser
       case Service.SharedStatesResponse(sharedStates) => {
         sharedStates.headOption match {
           case Some(sharedState) => {
-            context.log.info(s"received: {$sharedState}")
-
             implicit val timeout: Timeout = 3.seconds
             implicit val executionContext = context.executionContext
 
             val resourceName = sharedState.fields("resource")
-
-            val newSharedState = SharedState(Map("type"->"resource",
-                                                 "resource"->resourceName,
-                                                 "state"->"processing"),
-                                             Set("type", "resource"),
-                                             sharedState.version)
+            val newSharedState = SharedStateFactory.resource(resourceName, "processing", sharedState.version)
 
             context.ask(storage, replyTo => Storage.UpdateWithVersion(newSharedState, replyTo)) {
               case Success(Storage.UpdateResult(true)) => {
-                context.log.info("accepted")
                 Service.StartProcessing(resourceName)
               }
               case Success(Storage.UpdateResult(false)) => {
-                context.log.info("rejected")
                 Service.Idle()
               }
               case x => {
@@ -89,6 +89,7 @@ class Service(context: ActorContext[Service.Message], timers: TimerScheduler[Ser
       }
       case Service.StopProcessing(resourceName) => {
         context.log.info(s"stop processing, $resourceName")
+        storage ! Storage.Update(SharedStateFactory.resource(resourceName, "done"))
         idle()
       }
       case Service.Idle() =>
@@ -107,23 +108,11 @@ object Run extends App {
   val serviceA = Spawner.spawn(Service(storage), "serviceA")
   val serviceB = Spawner.spawn(Service(storage), "serviceB")
 
-  storage ! Storage.Update(SharedState(Map("type"->"resource",
-                                           "resource"->"resource-a",
-                                           "state"->"toProcess"),
-                                       Set("type", "resource")))
-
-  storage ! Storage.Update(SharedState(Map("type"->"resource",
-                                           "resource"->"resource-b",
-                                           "state"->"toProcess"),
-                                       Set("type", "resource")))
-
-  storage ! Storage.Update(SharedState(Map("type"->"resource",
-                                           "resource"->"resource-c",
-                                           "state"->"toProcess"),
-                                       Set("type", "resource")))
+  storage ! Storage.Update(SharedStateFactory.resource("resource-a"))
+  storage ! Storage.Update(SharedStateFactory.resource("resource-b"))
+  storage ! Storage.Update(SharedStateFactory.resource("resource-c"))
+  storage ! Storage.Update(SharedStateFactory.resource("resource-d"))
 
   Thread.sleep(5000)
   storage ! Storage.Print()
-
-
 }
